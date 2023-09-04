@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package com.lemmsh.boku;
 
+//todo: do not make the api exclusive to one application, but create a way to subscribe to all ongoing operations
 // Service definition
 service MoneyTransferService {
   // Send money from one user account to another
@@ -36,22 +37,38 @@ message Money {
 
 // Request to send money from one user account to another
 message SendMoneyToUserRequest {
-  InternalAccountIdentifier from = 1; // Sender's identifier
+  string from_nickname = 1; // Sender's identifier
   InternalAccountIdentifier to = 2;   // Receiver's identifier
   Money amount = 3;                   // Amount and currency to send
 }
 
 // Request to send money from a user account to an external withdrawal address
 message SendMoneyToExternalRequest {
-  InternalAccountIdentifier from = 1; // Sender's identifier
+  string from_nickname = 1; // Sender's identifier
   ExternalAccountIdentifier to = 2;   // Receiver's identifier (external)
   Money amount = 3;                   // Amount and currency to send
 }
 
 // Response to indicate the status of an operation
 message StatusUpdate {
+  oneof update_type {
+    ProgressUpdate progress_update = 2;
+    ConcurrentlyExecutingOperation concurrently_executing_operation = 3;
+  }
+}
+
+// Progress update for the current operation
+message ProgressUpdate {
   string operation_id = 1;  // ID of the operation
-  string message = 2;        // Status of the operation
+  string message = 2;       // Message for the operation (e.g., "In Progress", "Completed")
   int32 progress = 3;       // Progress percentage (0-100)
-  bool is_complete = 4;
+  bool is_completed = 4;    // Indicates if the operation is completed
+}
+
+// Information about another operation that is taking place concurrently
+message ConcurrentlyExecutingOperation {
+  string other_operation_id = 1; // ID of the other operation
+  string message = 2;             // Message for the other operation
+  int32 progress = 3;             // Progress percentage (0-100)
+  bool is_completed = 4;          // Indicates if the other operation is completed
 }

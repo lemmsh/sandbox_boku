@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package com.lemmsh.boku;
+
+// Service definition
+service MoneyTransferService {
+  // Send money from one user account to another
+  rpc SendMoneyToUser(SendMoneyToUserRequest) returns (stream StatusUpdate);
+
+  // Send money from a user account to an external withdrawal address
+  rpc SendMoneyToExternal(SendMoneyToExternalRequest) returns (stream StatusUpdate);
+}
+
+// Message types
+
+// Internal account identifier can be either a phone or a nickname
+message InternalAccountIdentifier {
+  oneof identifier {
+    string phone = 1;
+    string nickname = 2;
+  }
+}
+
+// External account identifier can be an IBAN for now, extensible for future types
+message ExternalAccountIdentifier {
+  oneof identifier {
+    string iban = 1;
+  }
+}
+
+// Money message containing amount and currency
+message Money {
+  double amount = 1;        // Amount
+  string currency = 2;      // Currency (e.g., USD, EUR)
+}
+
+// Request to send money from one user account to another
+message SendMoneyToUserRequest {
+  InternalAccountIdentifier from = 1; // Sender's identifier
+  InternalAccountIdentifier to = 2;   // Receiver's identifier
+  Money amount = 3;                   // Amount and currency to send
+}
+
+// Request to send money from a user account to an external withdrawal address
+message SendMoneyToExternalRequest {
+  InternalAccountIdentifier from = 1; // Sender's identifier
+  ExternalAccountIdentifier to = 2;   // Receiver's identifier (external)
+  Money amount = 3;                   // Amount and currency to send
+}
+
+// Response to indicate the status of an operation
+message StatusUpdate {
+  string operation_id = 1;  // ID of the operation
+  string message = 2;        // Status of the operation
+  int32 progress = 3;       // Progress percentage (0-100)
+  bool is_complete = 4;
+}

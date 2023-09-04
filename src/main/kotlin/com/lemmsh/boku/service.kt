@@ -11,16 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.consumeAsFlow
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-
-
-object UserOperations {
-    val activeOperations = mutableMapOf<String, Mutex>()
-}
 
 
 
@@ -34,9 +28,6 @@ class MoneyTransferServiceImpl(private val clientBalanceManager: ClientBalanceMa
             launch {
                 statusChannel.consumeAsFlow().collect { status ->
                     latestStatusMap[status.requestId] = status
-                    if (status.complete) {
-                        latestStatusMap.remove(status.requestId)
-                    }
                 }
             }
         }
@@ -44,31 +35,40 @@ class MoneyTransferServiceImpl(private val clientBalanceManager: ClientBalanceMa
 
     override fun sendMoneyToUser(request: SendMoneyToUserRequest, responseObserver: StreamObserver<StatusUpdate>) {
         val requestId = UUID.randomUUID()
-        clientBalanceManager.transferMoney(requestId, request.fromNickname, request.to.nickname, Money.fromProto(request.amount)) //todo: support phones
+        //todo: support phones
+        clientBalanceManager.transferMoney(requestId, request.fromNickname, request.to.nickname, Money.fromProto(request.amount))
+        sendUpdateStream(requestId, responseObserver)
+    }
 
+    fun sendUpdateStream(requestId: UUID, responseObserver: StreamObserver<StatusUpdate>) {
         runBlocking {
             launch {
 
                 val initialStatus = latestStatusMap[requestId]
                 if (initialStatus != null) {
-                    responseObserver.onNext(StatusUpdate.newBuilder()
-                        .setProgressUpdate(ProgressUpdate.newBuilder().setOperationId(
-                            requestId.toString()
-                        ).setMessage(initialStatus.)))
+                    //responseObserver.onNext()
+                    if (initialStatus.complete) {
+                        responseObserver.onCompleted()
+                        latestStatusMap.remove(requestId)
+                    }
                 }
-
+                //todo: we can miss an update here, better to start listening to the channel before reading the last value,
+                // and then compare the last value with those we've already sent by a seq num
                 statusChannel.consumeAsFlow().collect { status ->
                     if (status.requestId == requestId) {
-                        val response = StatusUpdateResponse(status.message, status.progress, status.isCompleted)
-                        responseObserver.onNext(response)
-                        if (status.isCompleted) {
+//                        val response = StatusUpdateResponse(status.message, status.progress, status.isCompleted)
+//                        responseObserver.onNext(response)
+                        if (status.complete) {
                             responseObserver.onCompleted()
+                            latestStatusMap.remove(requestId)
                         }
                     }
                 }
             }
         }
     }
+
+
 }
 
 
@@ -76,6 +76,7 @@ class MoneyTransferServiceImpl(private val clientBalanceManager: ClientBalanceMa
 
 class DummyMoneyTransferServiceImpl : MoneyTransferServiceGrpc.MoneyTransferServiceImplBase() {
 
+    val activeOperations = mutableMapOf<String, Mutex>()
     override fun sendMoneyToUser(
         request: SendMoneyToUserRequest,
         responseObserver: StreamObserver<StatusUpdate>
@@ -92,7 +93,7 @@ class DummyMoneyTransferServiceImpl : MoneyTransferServiceGrpc.MoneyTransferServ
 
     private fun handleOperation(nickname: String, responseObserver: StreamObserver<StatusUpdate>) {
         GlobalScope.launch(Dispatchers.IO) {
-            val mutex = UserOperations.activeOperations.getOrPut(nickname) { Mutex() }
+            val mutex = activeOperations.getOrPut(nickname) { Mutex() }
             if (mutex.isLocked) {
                 val update = StatusUpdate.newBuilder()
                     .setConcurrentlyExecutingOperation(

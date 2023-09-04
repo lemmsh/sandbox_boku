@@ -6,7 +6,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
 import java.util.UUID
 
-// Money object from the proto model
 data class Money(val amount: Double, val currency: String) {
     companion object{
         fun fromProto(money: Transfer.Money) = Money(money.amount, money.currency)
@@ -35,7 +34,7 @@ class ClientBalanceManager {
             launch(singleThreadDispatcher) {
                 for (request in requestChannel) {
                     // Send status that the processing started
-                    val startedStatus = OperationStatus(false, "Processing started")
+                    val startedStatus = OperationStatus(request.requestId, false, "Processing started")
                     statusChannel.trySend(startedStatus)
 
                     // Perform the money transfer
@@ -47,9 +46,9 @@ class ClientBalanceManager {
                     if (fromBalance.amount >= request.money.amount) {
                         clientBalances[fromKey] = Money(fromBalance.amount - request.money.amount, request.money.currency)
                         clientBalances[toKey] = Money(toBalance.amount + request.money.amount, request.money.currency)
-                        statusChannel.trySend(OperationStatus(true, "Transfer successful", true))
+                        statusChannel.trySend(OperationStatus(request.requestId, true, "Transfer successful", true))
                     } else {
-                        statusChannel.trySend(OperationStatus(true, "Insufficient funds", false))
+                        statusChannel.trySend(OperationStatus(request.requestId, true, "Insufficient funds", false))
                     }
                 }
             }
@@ -59,7 +58,7 @@ class ClientBalanceManager {
 
     fun transferMoney(requestId: UUID, from: String, to: String, money: Money) {
         // Send status that the processing is queued
-        val queuedStatus = OperationStatus(false, "Processing is queued")
+        val queuedStatus = OperationStatus(requestId, false, "Processing is queued")
         statusChannel.trySend(queuedStatus)
         requestChannel.trySend(TransferRequest(requestId, from, to, money))
     }

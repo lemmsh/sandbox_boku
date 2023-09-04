@@ -1,5 +1,6 @@
 package com.lemmsh.boku
 
+import WithdrawalServiceWrapper
 import io.grpc.stub.StreamObserver
 import com.lemmsh.boku.Transfer.*
 
@@ -18,10 +19,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 
 
-class MoneyTransferServiceImpl(private val clientBalanceManager: ClientBalanceManager) : MoneyTransferServiceGrpc.MoneyTransferServiceImplBase() {
+class MoneyTransferServiceImpl(
+    private val clientBalanceManager: ClientBalanceManager,
+    private val statusChannel: Channel<OperationStatus>
+) : MoneyTransferServiceGrpc.MoneyTransferServiceImplBase() {
 
     private val latestStatusMap: ConcurrentHashMap<UUID, OperationStatus> = ConcurrentHashMap()
-    private val statusChannel: Channel<OperationStatus> = clientBalanceManager.statusChannel
 
     fun start() {
         runBlocking {
@@ -33,10 +36,17 @@ class MoneyTransferServiceImpl(private val clientBalanceManager: ClientBalanceMa
         }
     }
 
+    override fun sendMoneyToExternal(
+        request: SendMoneyToExternalRequest,
+        responseObserver: StreamObserver<StatusUpdate>
+    ) {
+
+    }
+
     override fun sendMoneyToUser(request: SendMoneyToUserRequest, responseObserver: StreamObserver<StatusUpdate>) {
         val requestId = UUID.randomUUID()
         //todo: support phones
-        clientBalanceManager.transferMoney(requestId, request.fromNickname, request.to.nickname, Money.fromProto(request.amount))
+        clientBalanceManager.transferMoney(requestId, request.from.nickname, request.to.nickname, Money.fromProto(request.amount))
         sendUpdateStream(requestId, responseObserver)
     }
 
@@ -72,72 +82,3 @@ class MoneyTransferServiceImpl(private val clientBalanceManager: ClientBalanceMa
 }
 
 
-
-
-class DummyMoneyTransferServiceImpl : MoneyTransferServiceGrpc.MoneyTransferServiceImplBase() {
-
-    val activeOperations = mutableMapOf<String, Mutex>()
-    override fun sendMoneyToUser(
-        request: SendMoneyToUserRequest,
-        responseObserver: StreamObserver<StatusUpdate>
-    ) {
-        handleOperation(request.fromNickname, responseObserver)
-    }
-
-    override fun sendMoneyToExternal(
-        request: SendMoneyToExternalRequest,
-        responseObserver: StreamObserver<StatusUpdate>
-    ) {
-        handleOperation(request.fromNickname, responseObserver)
-    }
-
-    private fun handleOperation(nickname: String, responseObserver: StreamObserver<StatusUpdate>) {
-        GlobalScope.launch(Dispatchers.IO) {
-            val mutex = activeOperations.getOrPut(nickname) { Mutex() }
-            if (mutex.isLocked) {
-                val update = StatusUpdate.newBuilder()
-                    .setConcurrentlyExecutingOperation(
-                        ConcurrentlyExecutingOperation.newBuilder()
-                            .setOtherOperationId("someOtherOperationId")
-                            .setMessage("Another operation is already in progress")
-                            .setProgress(0)
-                            .setIsCompleted(false)
-                            .build()
-                    )
-                    .build()
-                responseObserver.onNext(update)
-                responseObserver.onCompleted()
-            } else {
-                mutex.withLock {
-                    sendDummyStatusUpdates(responseObserver)
-                }
-            }
-        }
-    }
-
-    private fun sendDummyStatusUpdates(responseObserver: StreamObserver<StatusUpdate>) {
-        for (i in 1..10) {
-            val progressUpdate = ProgressUpdate.newBuilder()
-                .setOperationId("dummyOperationId")
-                .setMessage("In Progress")
-                .setProgress(i * 10)
-                .setIsCompleted(false)
-                .build()
-            val statusUpdate = StatusUpdate.newBuilder()
-                .setProgressUpdate(progressUpdate)
-                .build()
-            responseObserver.onNext(statusUpdate)
-        }
-        val finalProgressUpdate = ProgressUpdate.newBuilder()
-            .setOperationId("dummyOperationId")
-            .setMessage("Completed")
-            .setProgress(100)
-            .setIsCompleted(true)
-            .build()
-        val finalStatusUpdate = StatusUpdate.newBuilder()
-            .setProgressUpdate(finalProgressUpdate)
-            .build()
-        responseObserver.onNext(finalStatusUpdate)
-        responseObserver.onCompleted()
-    }
-}

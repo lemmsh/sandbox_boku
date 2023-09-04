@@ -19,6 +19,15 @@ data class OperationStatus(val requestId: UUID, val complete: Boolean, val messa
 
 data class TransferRequest(val requestId: UUID, val from: String, val to: String, val money: Money)
 
+
+//todo: we need to marry withdrawal service and the client balance manager, such that on these requests
+// the balance manager goes to the withdrawal service and asynchronously asks that to send the money
+// we reduce the client balance at first, and if the money are not sent successfully, then we return the money to the client balance
+// There will be a channel between the ClientBalanceManager and the withdrawal service wrapper, where the latter one
+// will be publishing updates from the withdrawal service
+// and as soon as it's failed, the client balance manager will get the money back to the client balance
+// in a real world this must be somewhere in a persistent queue and in a form of a transaction log
+// Every other update from the withdrawal service wrapper will be retranslated to the gRPC service for progress report
 class ClientBalanceManager {
 
     private val clientBalances: MutableMap<ClientKey, Money> = mutableMapOf()

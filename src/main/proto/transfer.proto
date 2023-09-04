@@ -10,6 +10,10 @@ service MoneyTransferService {
 
   // Send money from a user account to an external withdrawal address
   rpc SendMoneyToExternal(SendMoneyToExternalRequest) returns (stream StatusUpdate);
+
+  rpc GetAllTransactionsForClient(ClientIdentifier) returns (stream Transaction);
+  rpc SubscribeToTransactionUpdates(TransactionIdentifier) returns (stream StatusUpdate);
+
 }
 
 // Message types
@@ -35,40 +39,39 @@ message Money {
   string currency = 2;      // Currency (e.g., USD, EUR)
 }
 
+
+message TransactionIdentifier {
+  string transactionId = 1;  // Transaction ID
+}
+
+message Transaction {
+  string transactionId = 1;  // Transaction ID
+  bool isCompleted = 5;  // Indicates if the transaction is completed
+}
+
+message ClientIdentifier {
+  string nickname = 1;  // Client's nickname
+}
+
 // Request to send money from one user account to another
 message SendMoneyToUserRequest {
-  string from_nickname = 1; // Sender's identifier
+  ClientIdentifier from = 1; // Sender's identifier
   InternalAccountIdentifier to = 2;   // Receiver's identifier
   Money amount = 3;                   // Amount and currency to send
 }
 
 // Request to send money from a user account to an external withdrawal address
 message SendMoneyToExternalRequest {
-  string from_nickname = 1; // Sender's identifier
+  ClientIdentifier from = 1; // Sender's identifier
   ExternalAccountIdentifier to = 2;   // Receiver's identifier (external)
   Money amount = 3;                   // Amount and currency to send
 }
 
 // Response to indicate the status of an operation
 message StatusUpdate {
-  oneof update_type {
-    ProgressUpdate progress_update = 2;
-    ConcurrentlyExecutingOperation concurrently_executing_operation = 3;
-  }
-}
-
-// Progress update for the current operation
-message ProgressUpdate {
   string operation_id = 1;  // ID of the operation
   string message = 2;       // Message for the operation (e.g., "In Progress", "Completed")
   int32 progress = 3;       // Progress percentage (0-100)
   bool is_completed = 4;    // Indicates if the operation is completed
 }
 
-// Information about another operation that is taking place concurrently
-message ConcurrentlyExecutingOperation {
-  string other_operation_id = 1; // ID of the other operation
-  string message = 2;             // Message for the other operation
-  int32 progress = 3;             // Progress percentage (0-100)
-  bool is_completed = 4;          // Indicates if the other operation is completed
-}
